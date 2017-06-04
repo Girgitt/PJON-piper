@@ -8,15 +8,18 @@
 #include <inttypes.h>  
 #include <stdlib.h>
 #include <chrono>
+#include <thread>
+#include <mutex>
 
 #define TS_RESPONSE_TIME_OUT 60000
-#define TS_COLLISION_DELAY 3000
+#define TS_COLLISION_DELAY 10000
 #define PJON_INCLUDE_TS true // Include only ThroughSerial
 #include "PJON/PJON.h"
 #include "PJON/PJONDefines.h"
 
 #include "version.h"
 
+std::mutex bus_mutex;
 
 std::string read_std_in(){
   std::string inStr;
@@ -27,9 +30,11 @@ std::string read_std_in(){
   fdwMode = fdwOldMode ^ ENABLE_MOUSE_INPUT ^ ENABLE_WINDOW_INPUT;
   SetConsoleMode(hStdIn, fdwMode);
 
-  if (WaitForSingleObject(hStdIn, 100) == WAIT_OBJECT_0){
+  if (WaitForSingleObject(hStdIn, 20) == WAIT_OBJECT_0){
     std::getline(std::cin, inStr);
-    return inStr;
+    if (inStr.length() > 1) {
+      return inStr;
+    }
   }
   return "NO_INPUT";
 }
@@ -42,7 +47,7 @@ static void receiver_function(
 	const PJON_Packet_Info &packet_info){
   
   rcvd_cnt += 1;
-
+  
   std::cout << "rcvd snd_id=" << std::to_string(packet_info.sender_id)
     << " rcv_id=" << std::to_string(packet_info.receiver_id)
     << " pckt_cnt=" << std::to_string(rcvd_cnt)
@@ -51,7 +56,6 @@ static void receiver_function(
 	            for (uint32_t i = 0; i != length; i++){
 		            std::cout << payload[i];
 	            }
-	
   std::cout << std::endl;
 }
 
@@ -112,16 +116,26 @@ bool is_third_arg_bus_id(int argc, char **argv) {
   return false;
 }
 
+bool is_fourth_arg_console_switch(int argc, char **argv) {
+  if (argc < 5)
+    return false;
+  std::cout << argc;
+
+  if (std::string(argv[4]).find("console") != std::string::npos)
+    return true;
+  return false;
+}
 
 void print_usage_help() {
   std::cout
     << "PJON-piper - a lightweight command line client to PJON bus\n"
     << "VERSION: " << PJON_PIPER_VERSION << "\n"
     << "\n"
-    << "usage:   pjon_piper.exe <COM PORT> <BITRATE> <NODE ID>\n"
-    << "                           \\          \\        \\\n"
-    << "                            \\          \\        0-255\n"
-    << "                             COMXX      1200 - 153600\n"
+    << "usage:   pjon_piper.exe COM PORT BITRATE NODE ID <console>\n"
+    << "                          \\        \\     \\           | \n"
+    << "                           \\        \\     0-255      |  \n"
+    << "                            COMXX    1200 - 153600   |    \n"
+    << "                      freezes on typing send/set commands    \n"
     << std::endl
     << "example: pjon_piper.exe COM3 57600 254" << std::endl
     << std::endl
@@ -203,8 +217,18 @@ void print_available_com_ports(){
     ;
 }
 
+void listen_on_bus(PJON<ThroughSerial> bus, bool is_console_mode) {
+  if(!is_console_mode)
+    while(true) {
+      bus_mutex.lock();
+      bus.receive();
+      bus_mutex.unlock();
+      delayMicroseconds(10 * 1000);
+    }
+}
 
 int main(int argc, char **argv) {
+  bool is_console_mode = false;
 
   if (argc == 2) {
     if (std::string(argv[1]) == "help") {
@@ -245,7 +269,21 @@ int main(int argc, char **argv) {
     std::cerr << "ERROR: third arg <NODE ID> should specify bus address 0 - 255\n";
     return 1;
   }
-
+  
+  if (argc > 4) {
+    if (!is_fourth_arg_console_switch(argc, argv)) {
+      print_usage_help();
+      std::cerr << "ERROR: fourth optional arg <console> should be console or empty\n";
+      return 1;
+    }
+    else {
+      is_console_mode = true;
+    }
+  }
+  else {
+    is_console_mode = false;
+  }
+  
 
   HANDLE hStdIn = GetStdHandle(STD_INPUT_HANDLE);
 
@@ -274,8 +312,13 @@ int main(int argc, char **argv) {
     printf("Opening bus... \n");
     bus.begin();
     bus.set_receiver(receiver_function);
+    
+    
+    std::thread bus_receive_thd(listen_on_bus, bus, is_console_mode);
+
 
     while (true) {
+      //std::string stdIn = "NO_INPUT";//read_std_in();
       std::string stdIn = read_std_in();
 
       if (stdIn != "NO_INPUT") {
@@ -317,15 +360,18 @@ int main(int argc, char **argv) {
 
             int node_adr = std::stoi(node_addr_str);
 
-            bus.send(
-              node_adr,
-              data_str.c_str(),
-              data_str.length()
-            );
+            bus_mutex.lock();
+              bus.send(
+                node_adr,
+                data_str.c_str(),
+                data_str.length()
+              );
 
-            for (int i = 0; i < 10; i++) {
-              bus.update();
-            }
+              for (int i = 0; i < 10; i++) {
+                bus.update();
+                //delayMicroseconds(10);
+              }
+            bus_mutex.unlock();
 
             bus.config = original_config;
           }
@@ -374,20 +420,20 @@ int main(int argc, char **argv) {
         }
       }
 
-      auto begin_ts = std::chrono::high_resolution_clock::now();
-      int bus_update_ms = 51;
-
-      while (true) {
-        auto elapsed_usec = std::chrono::duration_cast<std::chrono::microseconds>(std::chrono::high_resolution_clock::now() - begin_ts).count();
-        if (elapsed_usec >= bus_update_ms * 1000) break;
+      bus_mutex.lock();
         bus.update();
-        bus.receive(50 * 1000);
-      }
+      
+        if(is_console_mode){
+          bus.receive(1000);
+        }
+     bus_mutex.unlock();
+
+      delayMicroseconds(5 * 1000);
     }
 
-    printf("Attempting to receive from bus on exit... \n");
-    bus.receive(100);
-    printf("Success! \n");
+    //printf("Attempting to receive from bus on exit... \n");
+    //bus.receive(100);
+    //printf("Success! \n");
     return 0;
   }
   catch (const char* msg) {
