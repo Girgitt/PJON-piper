@@ -11,8 +11,8 @@
 #include <thread>
 #include <mutex>
 
-#define TS_RESPONSE_TIME_OUT 60000
-#define TS_COLLISION_DELAY 10000
+//#define TS_RESPONSE_TIME_OUT 25000
+//#define TS_COLLISION_DELAY 3
 #define PJON_INCLUDE_TS true // Include only ThroughSerial
 #include "PJON/PJON.h"
 #include "PJON/PJONDefines.h"
@@ -49,13 +49,27 @@ static void receiver_function(
   rcvd_cnt += 1;
   
   std::cout << "rcvd snd_id=" << std::to_string(packet_info.sender_id)
-    << " rcv_id=" << std::to_string(packet_info.receiver_id)
-    << " pckt_cnt=" << std::to_string(rcvd_cnt)
-    << " len=" << length
-    << " data=";
-	            for (uint32_t i = 0; i != length; i++){
-		            std::cout << payload[i];
-	            }
+            << " snd_net=";
+                          for (uint32_t i = 0; i < sizeof(packet_info.sender_bus_id); i++) {
+                            std::cout << std::to_string(packet_info.sender_bus_id[i]);
+                            if (i < sizeof(packet_info.sender_bus_id) - 1)
+                              std::cout << ".";
+                          }
+  std::cout << " rcv_id=" << std::to_string(packet_info.receiver_id)
+            << " rcv_net=";
+                          for (uint32_t i = 0; i < sizeof(packet_info.receiver_bus_id); i++) {
+                            std::cout << std::to_string(packet_info.receiver_bus_id[i]);
+                            if (i < sizeof(packet_info.receiver_bus_id) - 1)
+                              std::cout << ".";
+                          }
+ std::cout << " id=" << std::to_string(packet_info.id)
+           << " hdr=" << std::to_string(packet_info.header)
+           << " pckt_cnt=" << std::to_string(rcvd_cnt)
+           << " len=" << length
+           << " data=";
+	                    for (uint32_t i = 0; i != length; i++){
+		                    std::cout << payload[i];
+	                    }
   std::cout << std::endl;
 }
 
@@ -221,9 +235,10 @@ void listen_on_bus(PJON<ThroughSerial> bus, bool is_console_mode) {
   if(!is_console_mode)
     while(true) {
       bus_mutex.lock();
-      bus.receive();
+      bus.update();
+      bus.receive(1000);
       bus_mutex.unlock();
-      delayMicroseconds(10 * 1000);
+      delayMicroseconds(1 * 1000);
     }
 }
 
@@ -297,8 +312,10 @@ int main(int argc, char **argv) {
   int bitRate = std::stoi(std::string(argv[2]));
 
   printf("PJON instantiation... \n");
-  PJON<ThroughSerial> bus(std::stoi(std::string(argv[3])));
+  uint8_t bus_id[] = { 0, 0, 0, 1 };
 
+  PJON<ThroughSerial> bus(std::stoi(std::string(argv[3])));
+  bus.set_router(false);
   try {
     printf("Opening serial... \n");
     Serial serial_handle(com_str, bitRate, testComOnStartup, resetComOnStratup);
@@ -312,7 +329,7 @@ int main(int argc, char **argv) {
     printf("Opening bus... \n");
     bus.begin();
     bus.set_receiver(receiver_function);
-    
+    bus.set_synchronous_acknowledge(true);
     
     std::thread bus_receive_thd(listen_on_bus, bus, is_console_mode);
 
@@ -428,7 +445,7 @@ int main(int argc, char **argv) {
         }
      bus_mutex.unlock();
 
-      delayMicroseconds(5 * 1000);
+      delayMicroseconds(1 * 1000);
     }
 
     //printf("Attempting to receive from bus on exit... \n");
