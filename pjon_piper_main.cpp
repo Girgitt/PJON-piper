@@ -48,7 +48,7 @@ static void receiver_function(
   
   rcvd_cnt += 1;
   
-  std::cout << "rcvd snd_id=" << std::to_string(packet_info.sender_id)
+  std::cout << "#RCV snd_id=" << std::to_string(packet_info.sender_id)
             << " snd_net=";
                           for (uint32_t i = 0; i < sizeof(packet_info.sender_bus_id); i++) {
                             std::cout << std::to_string(packet_info.sender_bus_id[i]);
@@ -73,6 +73,11 @@ static void receiver_function(
   std::cout << std::endl;
 }
 
+static void error_handler_function(uint8_t code, uint8_t data) {
+  std::cout << "#ERR code=" << std::to_string(code);
+  std::cout << " data=" << std::to_string(data);
+  std::cout << std::endl;
+};
 
 std::string get_token_at_pos_for_delim(
   std::string const& str, 
@@ -329,6 +334,7 @@ int main(int argc, char **argv) {
     printf("Opening bus... \n");
     bus.begin();
     bus.set_receiver(receiver_function);
+    bus.set_error(error_handler_function);
     bus.set_synchronous_acknowledge(true);
     
     std::thread bus_receive_thd(listen_on_bus, bus, is_console_mode);
