@@ -49,6 +49,8 @@ bool inputAvailable_orig()
   FD_SET(STDIN_FILENO, &fds);
   select(STDIN_FILENO+1, &fds, NULL, NULL, &tv);
   return (FD_ISSET(0, &fds));
+#elif defined(_WIN32)
+  return false;
 #endif
 }
 
@@ -62,6 +64,8 @@ bool inputAvailable_test2()
 
   std::cin.seekg(0, std::cin.beg);
   return true;
+#elif defined(_WIN32)
+  return false;
 #endif
 }
 
@@ -75,6 +79,8 @@ if (ioctl(0, I_NREAD, &n) == 0 && n > 0){
 }
 
 return false;
+#elif defined(_WIN32)
+  return false;
 #endif
 }
 
@@ -92,6 +98,8 @@ bool inputAvailable_test4()
                 return true;
         else if(ret == 0)
                 return false;
+#elif defined(_WIN32)
+  return false;
 #endif
 }
 
@@ -103,7 +111,8 @@ bool inputAvailable_test5()
   std::cout<< avail <<std::endl;
   if(avail > 0) return true;
 return false;
- 
+#elif defined(_WIN32)
+  return false;
 #endif
 }
 
@@ -119,6 +128,8 @@ bool inputAvailable()
 
   if( numAvailable <= 0) return false;
   return true;
+#elif defined(_WIN32)
+  return false;
 #endif
 }
 
