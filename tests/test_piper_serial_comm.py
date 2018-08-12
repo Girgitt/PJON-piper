@@ -43,7 +43,7 @@ class TestPjonPiperFunctionally(TestCase):
                                  parent=self,
                                  base_dir=os.path.sep.join(os.path.abspath(__file__).split(os.path.sep)[:-2]))
         self._pp_com3.disable_autorestart()
-        self._pp_com3.start(blocking=True, blocking_timeout_sec=1)
+        self._pp_com3.start(blocking=True, blocking_timeout_sec=2)
 
         self._pp_com4_in = Queue()
         self._pp_com4_out = Queue()
@@ -53,7 +53,7 @@ class TestPjonPiperFunctionally(TestCase):
                                  parent=self,
                                  base_dir=os.path.sep.join(os.path.abspath(__file__).split(os.path.sep)[:-2]))
         self._pp_com3.disable_autorestart()
-        self._pp_com4.start(blocking=True, blocking_timeout_sec=1)
+        self._pp_com4.start(blocking=True, blocking_timeout_sec=2)
 
     def tearDown(self):
         self._pp_com3.stop()
@@ -93,6 +93,7 @@ class TestPjonPiperFunctionally(TestCase):
         com4_rcv_data = self._pp_com4._stdout_queue.get(timeout=.1)
         self.assertTrue(com4_rcv_data.startswith('#RCV snd_id=3'))
         self.assertTrue(com4_rcv_data.endswith('data=test from 3'))
+        self.assertRaises(Empty, lambda: self._pp_com4._stdout_queue.get(timeout=0.001))
 
     def test__com4_should_send_to_com3(self):
         self.assertEqual("PJON instantiation...", self._pp_com3._stdout_queue.get(timeout=.1))
@@ -111,7 +112,8 @@ class TestPjonPiperFunctionally(TestCase):
         # node com3 should log what it sent
         self.assertEqual("snd rcv_id=3 data=test from 4", self._pp_com4._stdout_queue.get(timeout=.1))
         # node com4 should log received packet
-        com4_rcv_data = self._pp_com3._stdout_queue.get(timeout=.1)
-        self.assertTrue(com4_rcv_data.startswith('#RCV snd_id=4'))
-        self.assertTrue(com4_rcv_data.endswith('data=test from 4'))
+        com3_rcv_data = self._pp_com3._stdout_queue.get(timeout=.1)
+        self.assertTrue(com3_rcv_data.startswith('#RCV snd_id=4'))
+        self.assertTrue(com3_rcv_data.endswith('data=test from 4'))
+        self.assertRaises(Empty, lambda: self._pp_com3._stdout_queue.get(timeout=0.001))
 
