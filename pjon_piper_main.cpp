@@ -14,8 +14,8 @@
 //#define TS_RESPONSE_TIME_OUT 25000
 //#define TS_COLLISION_DELAY 3
 #define PJON_INCLUDE_TS true // Include only ThroughSerial
-#include "PJON/PJON.h"
-#include "PJON/PJONDefines.h"
+#include "PJON/src/PJON.h"
+#include "PJON/src/PJONDefines.h"
 
 #include "version.h"
 
@@ -73,7 +73,7 @@ static void receiver_function(
   std::cout << std::endl;
 }
 
-static void error_handler_function(uint8_t code, uint8_t data) {
+static void error_handler_function(uint8_t code, uint8_t data, void *custom_pointer) {
   std::cout << "#ERR code=" << std::to_string(code);
   std::cout << " data=" << std::to_string(data);
   std::cout << std::endl;
@@ -334,7 +334,7 @@ int main(int argc, char **argv) {
     printf("Opening bus... \n");
     bus.begin();
     bus.set_receiver(receiver_function);
-    bus.set_error(error_handler_function);
+    //bus.set_error(error_handler_function);
     bus.set_synchronous_acknowledge(true);
     
     std::thread bus_receive_thd(listen_on_bus, bus, is_console_mode);
