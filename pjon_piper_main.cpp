@@ -1,4 +1,7 @@
-#include "stdafx.h"
+#ifdef _WIN32
+  #include "stdafx.h"
+#endif
+
 #include <stdio.h> 
 #include <iostream>
 #include <iomanip>
@@ -36,6 +39,23 @@
 #include "version.h"
 
 std::mutex bus_mutex;
+
+bool inputAvailable()
+{
+#ifdef RPI
+  int numAvailable = 0;
+  int iterCnt = 0;
+  while (ioctl(STDIN_FILENO, FIONREAD, &numAvailable) > 0) {
+    sleep(0.001);
+    if (iterCnt > 10) break;
+  }
+
+  if (numAvailable <= 0) return false;
+  return true;
+#elif defined(_WIN32)
+  return false;
+#endif
+}
 
 std::string read_std_in(){
   std::string inStr; 
