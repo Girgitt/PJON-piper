@@ -11,6 +11,22 @@
 #include <thread>
 #include <mutex>
 
+#ifdef __arm__
+  #ifndef RPI
+    #define RPI true
+    
+    // RPI serial interface
+    #include <wiringPi.h> 
+    #include <wiringSerial.h>
+    #include <unistd.h>
+    #include <sys/select.h>
+    #include <stropts.h>  //inputAvailable test 3
+    #include <sys/poll.h> 
+    #include <sys/ioctl.h> // test6
+    
+  #endif
+#endif
+
 //#define TS_RESPONSE_TIME_OUT 25000
 //#define TS_COLLISION_DELAY 3
 #define PJON_INCLUDE_TS true // Include only ThroughSerial
@@ -22,20 +38,30 @@
 std::mutex bus_mutex;
 
 std::string read_std_in(){
-  std::string inStr;
-  DWORD fdwMode, fdwOldMode;
-  HANDLE hStdIn = GetStdHandle(STD_INPUT_HANDLE);
-  GetConsoleMode(hStdIn, &fdwOldMode);
-  // disable mouse and window input
-  fdwMode = fdwOldMode ^ ENABLE_MOUSE_INPUT ^ ENABLE_WINDOW_INPUT;
-  SetConsoleMode(hStdIn, fdwMode);
+  std::string inStr; 
+  
+  #ifdef _WIN32
+    DWORD fdwMode, fdwOldMode;
+    HANDLE hStdIn = GetStdHandle(STD_INPUT_HANDLE);
+    GetConsoleMode(hStdIn, &fdwOldMode);
+    // disable mouse and window input
+    fdwMode = fdwOldMode ^ ENABLE_MOUSE_INPUT ^ ENABLE_WINDOW_INPUT;
+    SetConsoleMode(hStdIn, fdwMode);
 
-  if (WaitForSingleObject(hStdIn, 20) == WAIT_OBJECT_0){
-    std::getline(std::cin, inStr);
-    if (inStr.length() > 1) {
-      return inStr;
+    if (WaitForSingleObject(hStdIn, 20) == WAIT_OBJECT_0){
+      std::getline(std::cin, inStr);
+      if (inStr.length() > 1) {
+        return inStr;
+      }
     }
-  }
+  #elif defined(RPI)
+    if (inputAvailable()) {
+      std::getline(std::cin, inStr);
+      if (inStr.length() > 1) {
+        return inStr;
+      }
+    }
+  #endif
   return "NO_INPUT";
 }
 
@@ -113,9 +139,12 @@ bool is_enough_args(int argc, char **argv) {
 
 bool is_first_arg_com_port(int argc, char **argv) {
   //std::cout << "argv[1]: " << std::string(argv[1]) << "\n";
-  if (std::string(argv[1]).find("COM") != std::string::npos)
-    return true;
-  return false;
+  #ifdef _WIN32
+    if (std::string(argv[1]).find("COM") != std::string::npos)
+      return true;
+    return false;
+  #endif
+  return true;
 }
 
 
@@ -207,33 +236,35 @@ void print_commands_help() {
 
 
 void print_available_com_ports(){
-  HANDLE hCom = NULL;
+  #ifdef _WIN32
+    HANDLE hCom = NULL;
 
-  std::cout << "available COM ports:" << std::endl
-            << "--------------------------------------" << std::endl;
+    std::cout << "available COM ports:" << std::endl
+              << "--------------------------------------" << std::endl;
 
-  for (int i = 1; i <= 99; ++i) {
-    std::string com_str = std::string("\\\\.\\COM") + std::to_string(i);
+    for (int i = 1; i <= 99; ++i) {
+      std::string com_str = std::string("\\\\.\\COM") + std::to_string(i);
 
-    hCom =
-      CreateFile(
-        std::wstring(com_str.begin(), com_str.end()).c_str(),
-        GENERIC_READ | GENERIC_WRITE,
-        0,
-        NULL,
-        OPEN_EXISTING,
-        0,
-        NULL
-      );
+      hCom =
+        CreateFile(
+          std::wstring(com_str.begin(), com_str.end()).c_str(),
+          GENERIC_READ | GENERIC_WRITE,
+          0,
+          NULL,
+          OPEN_EXISTING,
+          0,
+          NULL
+        );
 
-    if (hCom != INVALID_HANDLE_VALUE){
-      std::cout << "COM" << std::to_string(i) << std::endl;
-      CloseHandle(hCom);
+      if (hCom != INVALID_HANDLE_VALUE){
+        std::cout << "COM" << std::to_string(i) << std::endl;
+        CloseHandle(hCom);
+      }
     }
-  }
 
-  std::cout << "--------------------------------------" << std::endl
-    ;
+    std::cout << "--------------------------------------" << std::endl
+      ;
+  #endif
 }
 
 void listen_on_bus(PJON<ThroughSerial> bus, bool is_console_mode) {
@@ -304,16 +335,21 @@ int main(int argc, char **argv) {
     is_console_mode = false;
   }
   
+  #ifdef _WIN32
+    HANDLE hStdIn = GetStdHandle(STD_INPUT_HANDLE);
 
-  HANDLE hStdIn = GetStdHandle(STD_INPUT_HANDLE);
-
-  FlushConsoleInputBuffer(hStdIn);
-
+    FlushConsoleInputBuffer(hStdIn);
+  #endif
 
   bool resetComOnStratup = false;
   bool testComOnStartup = false;
 
-  std::string com_str = std::string("\\\\.\\") + std::string(argv[1]);
+  #ifdef _WIN32
+    std::string com_str = std::string("\\\\.\\") + std::string(argv[1]);
+  #elif defined(RPI)
+    std::string com_str = std::string(argv[1]);
+  #endif
+  
   int bitRate = std::stoi(std::string(argv[2]));
 
   printf("PJON instantiation... \n");
@@ -323,13 +359,24 @@ int main(int argc, char **argv) {
   bus.set_router(false);
   try {
     printf("Opening serial... \n");
-    Serial serial_handle(com_str, bitRate, testComOnStartup, resetComOnStratup);
+    
+    #ifdef _WIN32
+      Serial serial_handle(com_str, bitRate, testComOnStartup, resetComOnStratup);
+    #elif defined(RPI)
+      int s = serialOpen(com_str.c_str(), bitRate);
+      if (s < 0) printf("Serial open fail!");
+      if (wiringPiSetup() == -1) printf("WiringPi setup fail");
+    #endif
 
     if (resetComOnStratup)
       delayMicroseconds(2 * 1000 * 1000);
 
     printf("Setting serial... \n");
-    bus.strategy.set_serial(&serial_handle);
+    #ifdef _WIN32
+      bus.strategy.set_serial(&serial_handle);
+    #elif defined(RPI)
+      bus.strategy.set_serial(s);
+    #endif
 
     printf("Opening bus... \n");
     bus.begin();
