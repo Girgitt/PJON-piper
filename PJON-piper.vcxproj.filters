@@ -32,7 +32,7 @@
     <ClCompile Include="pjon_piper_main.cpp">
       <Filter>Source Files</Filter>
     </ClCompile>
-    <ClCompile Include="PJON\interfaces\WINX86\Serial\Serial.cpp">
+    <ClCompile Include="PJON\src\interfaces\WINX86\Serial\Serial.cpp">
       <Filter>Source Files</Filter>
     </ClCompile>
   </ItemGroup>
