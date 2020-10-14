@@ -11,9 +11,14 @@
 #include <thread>
 #include <mutex>
 
-//#define TS_RESPONSE_TIME_OUT 25000
+#define TS_RESPONSE_TIME_OUT 25000
+//#define TS_BYTE_TIME_OUT 1500
 //#define TS_COLLISION_DELAY 3
+#define TS_BACK_OFF_DEGREE 6
+#define TS_MAX_ATTEMPTS 3
 #define PJON_INCLUDE_TS true // Include only ThroughSerial
+#define PJON_INCLUDE_ASYNC_ACK 1
+
 #include "PJON/src/PJON.h"
 #include "PJON/src/PJONDefines.h"
 
@@ -336,6 +341,7 @@ int main(int argc, char **argv) {
     bus.set_receiver(receiver_function);
     bus.set_error(error_handler_function);
     bus.set_synchronous_acknowledge(true);
+    //bus.include_sender_info(true);
     
     std::thread bus_receive_thd(listen_on_bus, bus, is_console_mode);
 
