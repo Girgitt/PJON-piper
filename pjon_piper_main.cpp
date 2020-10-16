@@ -1,4 +1,7 @@
-#include "stdafx.h"
+#ifdef _WIN32
+ #include "stdafx.h"
+#endif
+
 #include <stdio.h> 
 #include <iostream>
 #include <iomanip>
@@ -11,14 +14,38 @@
 #include <thread>
 #include <mutex>
 
-#define TS_RESPONSE_TIME_OUT 25000
-//#define TS_BYTE_TIME_OUT 1500
-//#define TS_COLLISION_DELAY 3
-#define TS_BACK_OFF_DEGREE 6
-#define TS_MAX_ATTEMPTS 3
-#define PJON_INCLUDE_TS true // Include only ThroughSerial
-#define PJON_INCLUDE_ASYNC_ACK 1
+#ifdef __arm__
+  #ifndef RPI
+    #define RPI true
+    
+    // RPI serial interface
+    #include <wiringPi.h> 
+    #include <wiringSerial.h>
+    #include <unistd.h>
+    #include <sys/select.h>
+    #include <stropts.h>  //inputAvailable test 3
+    #include <sys/poll.h> 
+    #include <sys/ioctl.h> // test6
+    
+  #endif
+#endif
 
+#ifdef LINUX
+  #ifndef DWORD
+    #define WINAPI
+      typedef unsigned long DWORD;
+      typedef short WCHAR;
+      typedef void * HANDLE;
+    #define MAX_PATH    PATH_MAX
+      typedef unsigned char BYTE;
+      typedef unsigned short WORD;
+      typedef unsigned int BOOL;
+  #endif
+ #endif
+
+#define TS_RESPONSE_TIME_OUT 25000
+//#define TS_COLLISION_DELAY 3
+#define PJON_INCLUDE_TS true // Include only ThroughSerial
 #include "PJON/src/PJON.h"
 #include "PJON/src/PJONDefines.h"
 
@@ -26,21 +53,54 @@
 
 std::mutex bus_mutex;
 
-std::string read_std_in(){
-  std::string inStr;
-  DWORD fdwMode, fdwOldMode;
-  HANDLE hStdIn = GetStdHandle(STD_INPUT_HANDLE);
-  GetConsoleMode(hStdIn, &fdwOldMode);
-  // disable mouse and window input
-  fdwMode = fdwOldMode ^ ENABLE_MOUSE_INPUT ^ ENABLE_WINDOW_INPUT;
-  SetConsoleMode(hStdIn, fdwMode);
 
-  if (WaitForSingleObject(hStdIn, 20) == WAIT_OBJECT_0){
-    std::getline(std::cin, inStr);
-    if (inStr.length() > 1) {
-      return inStr;
-    }
+bool inputAvailable(){
+#if defined(RPI) || defined(LINUX)
+  int numAvailable = 0;
+  int iterCnt = 0;
+  while(ioctl( STDIN_FILENO, FIONREAD, &numAvailable) > 0){
+    sleep(0.001);
+    if (iterCnt > 10) break;
   }
+
+  if( numAvailable <= 0) return false;
+  return true;
+#elif defined(_WIN32)
+  return false;
+#endif
+}
+
+
+std::string read_std_in(){
+  std::string inStr;  
+  bool flag = false;
+  
+  #ifdef _WIN32
+    DWORD fdwMode, fdwOldMode;
+	  HANDLE hStdIn = GetStdHandle(STD_INPUT_HANDLE);
+	  GetConsoleMode(hStdIn, &fdwOldMode);
+	  // disable mouse and window input
+	  fdwMode = fdwOldMode ^ ENABLE_MOUSE_INPUT ^ ENABLE_WINDOW_INPUT;
+	  SetConsoleMode(hStdIn, fdwMode);
+	
+	  if (WaitForSingleObject(hStdIn, 20) == WAIT_OBJECT_0){
+	    std::getline(std::cin, inStr);
+	    if (inStr.length() > 1) {
+	      return inStr;
+	    }
+	  }
+    return "NO_INPUT";
+  
+  #elif defined(RPI) || defined(LINUX)
+    if(inputAvailable()){
+      std::getline(std::cin, inStr);
+      if (inStr.length() > 1) {
+        return inStr;
+      }
+      return "NO_INPUT";
+    }
+
+  #endif
   return "NO_INPUT";
 }
 
@@ -78,11 +138,12 @@ static void receiver_function(
   std::cout << std::endl;
 }
 
-void error_handler_function(uint8_t code, uint16_t data, void *custom_pointer) {
+static void error_handler_function(uint8_t code, uint16_t data, void *custom_pointer) {
   std::cout << "#ERR code=" << std::to_string(code);
   std::cout << " data=" << std::to_string(data);
   std::cout << std::endl;
 };
+
 
 std::string get_token_at_pos_for_delim(
   std::string const& str, 
@@ -118,9 +179,12 @@ bool is_enough_args(int argc, char **argv) {
 
 bool is_first_arg_com_port(int argc, char **argv) {
   //std::cout << "argv[1]: " << std::string(argv[1]) << "\n";
-  if (std::string(argv[1]).find("COM") != std::string::npos)
-    return true;
-  return false;
+  #ifdef _WIN32
+    if (std::string(argv[1]).find("COM") != std::string::npos)
+      return true;
+    return false;
+  #endif
+  return true;
 }
 
 
@@ -212,6 +276,7 @@ void print_commands_help() {
 
 
 void print_available_com_ports(){
+#ifdef _WIN32
   HANDLE hCom = NULL;
 
   std::cout << "available COM ports:" << std::endl
@@ -239,6 +304,7 @@ void print_available_com_ports(){
 
   std::cout << "--------------------------------------" << std::endl
     ;
+#endif
 }
 
 void listen_on_bus(PJON<ThroughSerial> bus, bool is_console_mode) {
@@ -246,7 +312,7 @@ void listen_on_bus(PJON<ThroughSerial> bus, bool is_console_mode) {
     while(true) {
       bus_mutex.lock();
       bus.update();
-      bus.receive(1000);
+      bus.receive();
       bus_mutex.unlock();
       delayMicroseconds(1 * 1000);
     }
@@ -309,16 +375,22 @@ int main(int argc, char **argv) {
     is_console_mode = false;
   }
   
+  #ifdef _WIN32
+    HANDLE hStdIn = GetStdHandle(STD_INPUT_HANDLE);
 
-  HANDLE hStdIn = GetStdHandle(STD_INPUT_HANDLE);
-
-  FlushConsoleInputBuffer(hStdIn);
+    FlushConsoleInputBuffer(hStdIn);
+  #endif
 
 
   bool resetComOnStratup = false;
   bool testComOnStartup = false;
 
-  std::string com_str = std::string("\\\\.\\") + std::string(argv[1]);
+  #ifdef _WIN32
+    std::string com_str = std::string("\\\\.\\") + std::string(argv[1]);
+  #elif defined(RPI) || defined(LINUX)
+    std::string com_str = std::string(argv[1]);
+  #endif
+
   int bitRate = std::stoi(std::string(argv[2]));
 
   printf("PJON instantiation... \n");
@@ -327,21 +399,37 @@ int main(int argc, char **argv) {
   PJON<ThroughSerial> bus(std::stoi(std::string(argv[3])));
   bus.set_router(false);
   try {
-    printf("Opening serial... \n");
-    Serial serial_handle(com_str, bitRate, testComOnStartup, resetComOnStratup);
+    printf("Opening serial: ");
+    
+    #ifdef _WIN32
+        Serial serial_handle(com_str, bitRate, testComOnStartup, resetComOnStratup);
+        printf(com_str.c_str());
+        printf("\n");
+    #elif defined(RPI) || defined(LINUX)
+        printf(com_str.c_str());
+        int s = serialOpen(com_str.c_str(), bitRate);
+        if(s < 0) printf(" - Serial open fail!");
+        printf("\n");
+    #endif
+    #ifdef RPI
+        if(wiringPiSetup() == -1) printf("WiringPi setup fail");
+    #endif
 
     if (resetComOnStratup)
       delayMicroseconds(2 * 1000 * 1000);
 
     printf("Setting serial... \n");
-    bus.strategy.set_serial(&serial_handle);
+    #ifdef _WIN32
+        bus.strategy.set_serial(&serial_handle);
+    #elif defined(RPI) || defined(LINUX)
+        bus.strategy.set_serial(s);
+    #endif
 
     printf("Opening bus... \n");
     bus.begin();
     bus.set_receiver(receiver_function);
     bus.set_error(error_handler_function);
     bus.set_synchronous_acknowledge(true);
-    //bus.include_sender_info(true);
     
     std::thread bus_receive_thd(listen_on_bus, bus, is_console_mode);
 
@@ -453,11 +541,10 @@ int main(int argc, char **argv) {
         bus.update();
       
         if(is_console_mode){
-          bus.receive(1000);
+          bus.receive();
         }
      bus_mutex.unlock();
-
-      delayMicroseconds(1 * 1000);
+     delayMicroseconds(1 * 1000);
     }
 
     //printf("Attempting to receive from bus on exit... \n");
