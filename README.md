@@ -44,7 +44,7 @@ PJON-piper is a contribution to PJON™ by Zbigniew Zasieczny z.zasieczny@gmail.
 
 The purpose of PJON-piper is to provide an easy to use PJON client available for various OS platforms (Windows, Linux*).
 ------------------------------------------------------------------------------------------------------------------------
-* currently only Rasbian for Raspberry PI will be supported (work in progress)
+* currently Rasbian for Raspberry PI is supproted in all branches; branches dev_0_12 and newer also support Linux x86
  
 PJON-piper can be used to develop PJON connectivity from many programming languages by wrapping the stdin/out of the PJON-piper
 e.g. running as a subprocess. PJON-piper is also an abstraction layer for maintaining compatibility with PJON for multiple 
