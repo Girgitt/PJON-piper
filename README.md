@@ -63,6 +63,6 @@ PJON-piper uses a branched development approach as follows:
 - X defines compatibility within PJON-piper (stdin/out interface should not change for a given X number)
 - Y defines compatibility with PJON version 
 
-Example: dev_0_12 is a branch with PJON v12 library and has tags rel_0_12_0, rel_0_12_1.. where the last digit indicates bugfix release. Each release tag from dev_0_12 should work with any code using PJON-piper version "0" API and PJON devices built with PJON v12 library.
+Example: dev_0_12 is a branch with PJON v12 library and has tags rel_0_12_1_0, rel_0_12_1_1.. where the last digit indicates bugfix release. Each release tag from dev_0_12 should work with any code using PJON-piper version "0" API and PJON devices built with PJON v12 library - in this example v12.1 thus there are four release tag digits. 
 
 Please checkout the branch compatible with the PJON version being used or use tags to get the tested code. 
